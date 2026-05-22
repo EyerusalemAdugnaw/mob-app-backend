@@ -1,0 +1,15 @@
+node_modules/
+.env
+.env.*
+!.env.example
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+out*.txt
+out*.json
+test-*.txt
+test-*.js
+!test_db.js
+!test_db2.js
+!test_db3.js
