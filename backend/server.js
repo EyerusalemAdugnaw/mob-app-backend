@@ -12,6 +12,7 @@ import managerRoutes from './routes/managerRoutes.js'
 import branchManagerRoutes from './routes/branchManagerRoutes.js'
 import batchRoutes from './routes/batchRoutes.js'
 import feedbackRoutes from './routes/feedbackRoutes.js'
+import { startExpiryCronJob } from './cron/expiryCheck.js'
 
 const app = express()
 
@@ -37,6 +38,9 @@ const PORT = process.env.PORT || 9000
 
 console.log('Starting server...')
 console.log('PORT:', PORT)
+
+// Initialize Scheduled Background Jobs
+startExpiryCronJob();
 
 const server = app.listen(PORT, () => {
   console.log(`✅ Server successfully started on port ${PORT}`)

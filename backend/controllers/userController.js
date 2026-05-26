@@ -252,4 +252,71 @@ export const resetPassword = async (req, res) => {
     console.error('Reset password error:', err);
     res.status(500).json({ error: 'Server error' });
   }
+};
+
+export const updateFCMToken = async (req, res) => {
+  try {
+    const { email, fcmToken } = req.body;
+    if (!email || !fcmToken) {
+      return res.status(400).json({ error: 'Email and FCM token are required' });
+    }
+
+    const supabaseAdmin = getSupabaseAdmin();
+    
+    // First find the user by email
+    const { data: profile, error: profileErr } = await supabaseAdmin
+      .from('profiles')
+      .select('id')
+      .eq('email', email)
+      .single();
+
+    if (profileErr || !profile) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    // Update their profile with the FCM token
+    const { error: updateError } = await supabaseAdmin
+      .from('profiles')
+      .update({ fcm_token: fcmToken })
+      .eq('id', profile.id);
+
+    if (updateError) {
+      return res.status(500).json({ error: 'Failed to update FCM token', details: updateError });
+    }
+
+    res.json({ message: 'Push notification token registered successfully' });
+  } catch (err) {
+    console.error('Update FCM token error:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+};
+
+import { sendPushNotification } from '../lib/pushNotification.js';
+
+export const testPushNotification = async (req, res) => {
+  try {
+    const supabaseAdmin = getSupabaseAdmin();
+    // Get the first user that has an FCM token for testing
+    const { data: profile } = await supabaseAdmin
+      .from('profiles')
+      .select('fcm_token, email')
+      .not('fcm_token', 'is', null)
+      .limit(1)
+      .single();
+
+    if (!profile || !profile.fcm_token) {
+      return res.status(404).json({ error: 'No user with a registered FCM token found.' });
+    }
+
+    await sendPushNotification(
+      profile.fcm_token,
+      'Test Notification',
+      '🛑 This is a test push notification from your Dairy System!'
+    );
+
+    res.json({ message: 'Test notification sent!', sentTo: profile.email });
+  } catch (err) {
+    console.error('Test push error:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
 };
