@@ -187,6 +187,20 @@ export const addBranchStock = async (req, res) => {
 
     const supabase = getSupabaseAdmin();
 
+    if (batch_number) {
+      // Check if batch number already exists anywhere in the system
+      const { data: existingBatch } = await supabase
+        .from('branch_inventory')
+        .select('id')
+        .eq('batch_number', batch_number)
+        .limit(1)
+        .single();
+        
+      if (existingBatch) {
+        return res.status(400).json({ error: 'This batch number is already taken' });
+      }
+    }
+
     const { data: productData, error: prodErr } = await supabase.from('products').select('shelf_life_days').eq('id', product_id).single();
     if (prodErr || !productData) {
       return res.status(404).json({ error: 'Product not found' });
