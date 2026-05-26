@@ -1,9 +1,18 @@
 import { getSupabaseAdmin } from '../lib/supabaseAdmin.js';
 
 const resolveBranchId = async (req) => {
+  // STRICT BRANCH ISOLATION: 
+  // If the user is a branch manager, they are completely locked to their assigned branch.
+  // We completely ignore req.query.branch_id for them to prevent cross-branch access.
+  if (req.user.role === 'branch_manager') {
+    return req.user.branch_id;
+  }
+
+  // Admins and main managers can request specific branches via query
   if (req.query.branch_id) return req.query.branch_id;
   if (req.user.branch_id) return req.user.branch_id;
   
+  // Fallback for admins testing without query
   if (req.user.role === 'admin' || req.user.role === 'main_manager') {
     const supabase = getSupabaseAdmin();
     const { data } = await supabase.from('branches').select('id').limit(1).single();

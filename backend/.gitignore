@@ -13,3 +13,6 @@ test-*.js
 !test_db.js
 !test_db2.js
 !test_db3.js
+
+# Firebase
+firebase-service-account.json

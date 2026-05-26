@@ -1,11 +1,12 @@
 import express from 'express'
 import { createUser, getUsers, updateUser, forgotPassword, verifyOTP, resetPassword, updateFCMToken, testPushNotification } from '../controllers/userController.js'
-import { authenticateAdmin, loginUser, changePassword } from '../middleware/auth.js'
+import { authenticateAdmin, loginUser, mobileLoginUser, changePassword } from '../middleware/auth.js'
 
 const router = express.Router()
 
 // Public routes (All roles can log in & change password on first login)
 router.post('/login', loginUser)
+router.post('/mobile-login', mobileLoginUser)
 router.put('/change-password', changePassword)
 
 // Device Registration for Push Notifications

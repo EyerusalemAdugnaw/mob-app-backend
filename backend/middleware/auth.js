@@ -264,6 +264,73 @@ export const loginUser = async (req, res) => {
   }
 }
 
+export const mobileLoginUser = async (req, res) => {
+  try {
+    const { email, password } = req.body
+
+    if (!email || !password) {
+      return res.status(400).json({ error: 'Email and password are required' })
+    }
+
+    const loginClient = createClient(
+      process.env.SUPABASE_URL,
+      process.env.SUPABASE_SERVICE_ROLE_KEY,
+      { auth: { persistSession: false, autoRefreshToken: false } }
+    )
+
+    const { data, error } = await loginClient.auth.signInWithPassword({
+      email,
+      password
+    })
+
+    if (error) {
+      console.error('Mobile Login error:', error)
+      return res.status(401).json({ error: 'Invalid credentials' })
+    }
+
+    const supabaseAdmin = getSupabaseAdmin()
+
+    const { data: profile, error: profileError } = await supabaseAdmin
+      .from('profiles')
+      .select('role, branch_id')
+      .eq('id', data.user.id)
+      .single()
+
+    if (profileError || !profile) {
+      return res.status(401).json({ error: 'User profile not found' })
+    }
+
+    // STRICT RBAC: Only allow branch_managers to log in to the mobile app
+    if (profile.role !== 'branch_manager') {
+      console.warn(`Unauthorized mobile login attempt by role: ${profile.role}`);
+      return res.status(401).json({ error: 'Invalid credentials' })
+    }
+
+    const token = data.session.access_token
+
+    let branchName = 'Unknown Branch';
+    if (profile.branch_id) {
+       const { data: branchData } = await supabaseAdmin.from('branches').select('name').eq('id', profile.branch_id).single();
+       if (branchData) branchName = branchData.name;
+    }
+
+    res.json({
+      message: 'Mobile Login successful',
+      token,
+      user: {
+        id: data.user.id,
+        email: data.user.email,
+        role: profile.role,
+        branchName: branchName,
+        mustChangePassword: data.user.user_metadata?.must_change_password === true
+      }
+    })
+  } catch (err) {
+    console.error('Mobile Login server error:', err)
+    res.status(500).json({ error: 'Server error', details: err.message, stack: err.stack })
+  }
+}
+
 export const changePassword = async (req, res) => {
   try {
     const { email, currentPassword, newPassword } = req.body
