@@ -660,3 +660,109 @@ export const getTransferRecommendations = async (req, res) => {
     res.status(500).json({ error: 'Failed to get recommendations' });
   }
 };
+
+export const getBranchNotifications = async (req, res) => {
+  try {
+    const branchId = await resolveBranchId(req);
+    if (!branchId) return res.status(400).json({ error: 'Branch ID required' });
+
+    const supabase = getSupabaseAdmin();
+    const now = new Date();
+    
+    // 1. Fetch near expiry / expired items
+    const { data: inventory } = await supabase
+      .from('branch_inventory')
+      .select('id, batch_number, expiry_date, stock, product_id, products(name)')
+      .eq('branch_id', branchId)
+      .gt('stock', 0);
+      
+    const notifications = [];
+    
+    if (inventory) {
+      inventory.forEach(item => {
+        const expiryDate = new Date(item.expiry_date);
+        const daysDiff = Math.ceil((expiryDate.getTime() - now.getTime()) / (1000 * 3600 * 24));
+        const productName = item.products?.name || 'Unknown';
+        const batchStr = item.batch_number ? ` (Batch ${item.batch_number})` : '';
+        
+        if (daysDiff < 0) {
+          notifications.push({
+            id: `exp_${item.id}`,
+            title: 'Product Expired',
+            message: `${productName}${batchStr} has expired! Stock: ${item.stock}`,
+            type: 'alert',
+            date: item.expiry_date,
+            isRead: false
+          });
+        } else if (daysDiff <= 7) {
+          notifications.push({
+            id: `near_${item.id}`,
+            title: 'Near Expiry',
+            message: `${productName}${batchStr} will expire in ${daysDiff} days. Stock: ${item.stock}`,
+            type: 'warning',
+            date: item.expiry_date,
+            isRead: false
+          });
+        }
+      });
+    }
+
+    // 2. Fetch pending incoming transfer requests or incoming stock transfers
+    // We need alias for relation since there are two foreign keys to branches
+    const { data: transfers } = await supabase
+      .from('transfers')
+      .select(`
+        id, 
+        quantity, 
+        transfer_type, 
+        created_at, 
+        status, 
+        from_branch_id, 
+        to_branch_id, 
+        products(name),
+        from_branch:from_branch_id(name),
+        to_branch:to_branch_id(name)
+      `)
+      .or(`to_branch_id.eq.${branchId},from_branch_id.eq.${branchId}`)
+      .eq('status', 'Pending');
+
+    if (transfers) {
+      transfers.forEach(transfer => {
+        const productName = transfer.products?.name || 'Unknown';
+        
+        // Someone is sending us stock
+        if (transfer.to_branch_id === branchId && transfer.transfer_type === 'send') {
+          const fromBranchName = transfer.from_branch?.name || 'Another branch';
+          notifications.push({
+            id: `tr_${transfer.id}`,
+            title: 'Incoming Stock Transfer',
+            message: `${fromBranchName} is sending you ${transfer.quantity} units of ${productName}.`,
+            type: 'info',
+            date: transfer.created_at,
+            isRead: false
+          });
+        } 
+        // Someone is requesting stock from us
+        else if (transfer.from_branch_id === branchId && transfer.transfer_type === 'request') {
+          const toBranchName = transfer.to_branch?.name || 'Another branch';
+          notifications.push({
+            id: `tr_${transfer.id}`,
+            title: 'Stock Request Received',
+            message: `${toBranchName} requested ${transfer.quantity} units of ${productName} from you.`,
+            type: 'info',
+            date: transfer.created_at,
+            isRead: false
+          });
+        }
+      });
+    }
+
+    // Sort by date descending
+    notifications.sort((a, b) => new Date(b.date) - new Date(a.date));
+
+    res.json({ notifications });
+  } catch (error) {
+    console.error('Branch Notifications Error:', error);
+    res.status(500).json({ error: 'Server error fetching notifications' });
+  }
+};

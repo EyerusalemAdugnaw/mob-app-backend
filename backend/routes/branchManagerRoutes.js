@@ -10,7 +10,8 @@ import {
   createBranchTransfer,
   updateBranchTransfer,
   getTransferOptions,
-  getTransferRecommendations
+  getTransferRecommendations,
+  getBranchNotifications
 } from '../controllers/branchManagerController.js';
 
 const router = express.Router();
@@ -18,6 +19,7 @@ const router = express.Router();
 router.use(authenticateBranchManager);
 
 router.get('/dashboard', getBranchDashboard);
+router.get('/notifications', getBranchNotifications);
 router.get('/stock', getBranchStock);
 router.post('/stock', addBranchStock);
 router.get('/sales', getBranchSales);

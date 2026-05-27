@@ -1,6 +1,10 @@
 import admin from 'firebase-admin';
 import path from 'path';
 import fs from 'fs';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 let isFirebaseInitialized = false;
 
@@ -15,10 +19,12 @@ try {
   } 
   // Option 2: Read from local JSON file (easiest for local development)
   else {
-    const serviceAccountPath = path.resolve(process.cwd(), 'firebase-service-account.json');
+    const serviceAccountPath = path.resolve(__dirname, '..', 'firebase-service-account.json');
     if (fs.existsSync(serviceAccountPath)) {
       serviceAccount = JSON.parse(fs.readFileSync(serviceAccountPath, 'utf8'));
       console.log('📄 Using Firebase credentials from local file.');
+    } else {
+      console.warn(`⚠️ Could not find firebase-service-account.json at ${serviceAccountPath}`);
     }
   }
 
