@@ -1,4 +1,5 @@
 import { getSupabaseAdmin } from '../lib/supabaseAdmin.js';
+import { sendPushNotification } from '../lib/pushNotification.js';
 
 const resolveBranchId = async (req) => {
   // STRICT BRANCH ISOLATION: 
@@ -412,6 +413,35 @@ export const createBranchTransfer = async (req, res) => {
        if (fallbackError) throw fallbackError;
        return res.json({ message: 'Transfer request created successfully', data: fallbackData });
     }
+
+    // --- Push Notification Logic ---
+    try {
+      const targetBranchId = transfer_type === 'send' ? to_branch_id : from_branch_id;
+      const { data: managers } = await supabase.from('profiles')
+        .select('fcm_token')
+        .eq('branch_id', targetBranchId)
+        .eq('role', 'branch_manager')
+        .not('fcm_token', 'is', null);
+
+      if (managers && managers.length > 0) {
+        const { data: prod } = await supabase.from('products').select('name').eq('id', product_id).single();
+        const prodName = prod ? prod.name : 'Product';
+
+        const title = transfer_type === 'send' ? 'Incoming Stock Transfer' : 'Stock Request Received';
+        const body = transfer_type === 'send' 
+          ? `A branch is sending you ${quantity} units of ${prodName}.` 
+          : `A branch requested ${quantity} units of ${prodName} from you.`;
+        
+        for (const manager of managers) {
+          if (manager.fcm_token) {
+            await sendPushNotification(manager.fcm_token, title, body);
+          }
+        }
+      }
+    } catch (notifErr) {
+      console.error('Push notification failed for transfer:', notifErr);
+    }
+    // -------------------------------
 
     res.json({ message: 'Transfer request created successfully', data });
   } catch(error) {

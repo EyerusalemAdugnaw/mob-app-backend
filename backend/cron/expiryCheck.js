@@ -13,24 +13,24 @@ export const startExpiryCronJob = () => {
     try {
       const supabaseAdmin = getSupabaseAdmin();
       
-      // 1. Fetch all batches that are currently active
-      const { data: batches, error: batchError } = await supabaseAdmin
-        .from('batches')
+      // 1. Fetch all inventory that has stock > 0
+      const { data: inventory, error: invError } = await supabaseAdmin
+        .from('branch_inventory')
         .select(`
           id,
           batch_number,
           expiry_date,
-          status,
+          stock,
           product_id,
           products ( name ),
           branch_id
         `)
-        .eq('status', 'active');
+        .gt('stock', 0);
 
-      if (batchError) throw batchError;
+      if (invError) throw invError;
 
-      if (!batches || batches.length === 0) {
-        console.log('No active batches found.');
+      if (!inventory || inventory.length === 0) {
+        console.log('No active inventory found.');
         return;
       }
 
@@ -38,46 +38,39 @@ export const startExpiryCronJob = () => {
       const threeDaysFromNow = new Date();
       threeDaysFromNow.setDate(today.getDate() + 3);
 
-      for (const batch of batches) {
-        const expiryDate = new Date(batch.expiry_date);
-        const productName = batch.products?.name || 'Unknown Product';
+      for (const item of inventory) {
+        if (!item.expiry_date) continue;
+        
+        const expiryDate = new Date(item.expiry_date);
+        const productName = item.products?.name || 'Unknown Product';
         let notificationTitle = '';
         let notificationBody = '';
 
         // Check if expired
         if (expiryDate < today) {
           notificationTitle = 'Product Expired';
-          notificationBody = `🛑 ${productName} batch ${batch.batch_number} has expired.`;
-          
-          // Optionally, update batch status to expired in DB here
-          await supabaseAdmin.from('batches').update({ status: 'expired' }).eq('id', batch.id);
-
+          notificationBody = `🛑 ${productName} ${item.batch_number ? '(Batch '+item.batch_number+') ' : ''}has expired!`;
         } 
-        // Check if near expiry (within 3 days and hasn't expired yet)
+        // Check if near expiry
         else if (expiryDate <= threeDaysFromNow) {
           notificationTitle = 'Near Expiry Alert';
-          notificationBody = `⚠️ ${productName} batch ${batch.batch_number} is near expiry.`;
+          notificationBody = `⚠️ ${productName} ${item.batch_number ? '(Batch '+item.batch_number+') ' : ''}is near expiry.`;
         }
 
-        // If we need to send a notification
-        if (notificationBody && batch.branch_id) {
-          // Find the branch manager for this branch
-          const { data: branch, error: branchError } = await supabaseAdmin
-            .from('branches')
-            .select('manager_id')
-            .eq('id', batch.branch_id)
-            .single();
-            
-          if (!branchError && branch?.manager_id) {
-            // Find the manager's FCM token
-            const { data: profile } = await supabaseAdmin
-              .from('profiles')
-              .select('fcm_token')
-              .eq('id', branch.manager_id)
-              .single();
-              
-            if (profile?.fcm_token) {
-              await sendPushNotification(profile.fcm_token, notificationTitle, notificationBody, { batchId: batch.id });
+        if (notificationBody && item.branch_id) {
+          // Find managers for this branch
+          const { data: managers } = await supabaseAdmin
+            .from('profiles')
+            .select('fcm_token')
+            .eq('branch_id', item.branch_id)
+            .eq('role', 'branch_manager')
+            .not('fcm_token', 'is', null);
+
+          if (managers && managers.length > 0) {
+            for (const manager of managers) {
+              if (manager.fcm_token) {
+                await sendPushNotification(manager.fcm_token, notificationTitle, notificationBody, { inventoryId: item.id });
+              }
             }
           }
         }
